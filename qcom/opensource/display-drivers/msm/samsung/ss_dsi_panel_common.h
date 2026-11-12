@@ -654,6 +654,11 @@ enum ss_dsi_cmd_set_type {
 	TX_MCA_WRITE,
 	TX_MCA_SETTING,
 
+	TX_UDC_GAMMA_READ,
+	TX_UDC_GAMMA_ERASE,
+	TX_UDC_GAMMA_WRITE,
+	TX_UDC_GAMMA_FLASH_CHECK,
+
 	TX_CMD_END,
 
 	/* RX */
@@ -1417,6 +1422,12 @@ struct panel_func {
 
 	/* Read UDC datga */
 	int (*read_udc_data)(struct samsung_display_driver_data *vdd);
+	void (*udc_gamma_init)(struct samsung_display_driver_data *vdd);
+	void (*udc_gamma_read)(struct samsung_display_driver_data *vdd);
+	int (*udc_gamma_backup)(struct samsung_display_driver_data *vdd);
+	int (*udc_gamma_erase)(struct samsung_display_driver_data *vdd, int addr, int sector);
+	int (*udc_gamma_comp)(struct samsung_display_driver_data *vdd);
+	int (*udc_gamma_restore)(struct samsung_display_driver_data *vdd);
 
 	/* This has been applied temporarily for sensors and will be removed later.*/
 	void (*get_aor_data)(struct samsung_display_driver_data *vdd);
@@ -1910,6 +1921,24 @@ struct UDC {
 	int size;
 	u8 *data;
 	bool read_done;
+
+	u32 gamma_start_addr;
+	u32 gamma_backup_addr;
+	int gamma_size;
+	int gamma_read_size;
+
+	bool checksum;
+
+	u8 *gamma_data; /* original flash gamma data*/
+	u8 *gamma_data_backup;	/* backup data */
+
+	bool gamma_init_done;
+	bool gamma_read_done;
+	bool gamma_comp_done;
+	bool gamma_backup_done;
+	bool gamma_restore_done;
+
+	int **offset_table;
 };
 
 #define MAX_DELAY_NUM	(8)
@@ -2077,7 +2106,10 @@ struct samsung_display_driver_data {
 	struct samsung_display_debug_data *debug_data;
 	struct list_head vdd_list;
 
-	bool flash_done_fail;
+	bool need_panel_recovery;
+	bool during_panel_recovery;
+	int mipi_fail_recovery_cnt;
+	int mipi_fail_recovery_fail_cnt;
 
 	atomic_t block_commit_cnt;
 	struct wait_queue_head block_commit_wq;

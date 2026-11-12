@@ -58,6 +58,16 @@ struct ss_tlog {
 	const char *name;
 };
 
+struct ss_rlog_data {
+	s64 time;
+	u32 data[SS_XLOG_MAX_DATA];
+	int type;
+	int ndx;
+	int retry_cnt;
+	int recovery_done;
+	int result;
+};
+
 /* PANEL DEBUG FUNCTION */
 void ss_xlog(const char *name, int flag, ...);
 void ss_dump_xlog(void);
@@ -68,6 +78,8 @@ int ss_panel_debug_init(struct samsung_display_driver_data *vdd);
 		##__VA_ARGS__, DATA_LIMITER)
 #define SS_XLOG_BG(...) ss_xlog(__func__, SS_XLOG_BIGDATA, \
 		##__VA_ARGS__, DATA_LIMITER)
+
+void ss_rlog(int ndx, int type, int retry_cnt, int recovery_done);
 
 enum ss_smmu_type {
 	SMMU_RT_DISPLAY_DEBUG,

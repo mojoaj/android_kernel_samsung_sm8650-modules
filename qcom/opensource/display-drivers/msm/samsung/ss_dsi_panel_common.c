@@ -264,6 +264,12 @@ char ss_cmd_set_prop_map[SS_CMD_PROP_SIZE][SS_CMD_PROP_STR_LEN] = {
 	[SS_CMD_IDX(TX_MCA_WRITE)]	= "samsung,mca_write_revA",
 	[SS_CMD_IDX(TX_MCA_SETTING)]	= "samsung,mca_setting_revA",
 
+	/* UDC gamma compensation */
+	[SS_CMD_IDX(TX_UDC_GAMMA_READ)]		= "samsung,udc_gamma_read_cmds_revA",
+	[SS_CMD_IDX(TX_UDC_GAMMA_ERASE)]	= "samsung,udc_gamma_erase_cmds_revA",
+	[SS_CMD_IDX(TX_UDC_GAMMA_WRITE)]	= "samsung,udc_gamma_write_cmds_revA",
+	[SS_CMD_IDX(TX_UDC_GAMMA_FLASH_CHECK)] = "samsung,udc_gamma_flash_check_revA",
+
 	[SS_CMD_IDX(TX_CMD_END)]		= "TX_CMD_END not parsed from DTSI",
 
 	/* RX */
@@ -664,14 +670,11 @@ void ss_event_frame_update_post(struct samsung_display_driver_data *vdd)
 
 		vdd->esd_recovery.is_enabled_esd_recovery = true;
 
-		/* use recovery only when first booting */
-		if (vdd->use_flash_done_recovery) {
-			if (vdd->flash_done_fail) {
-				LCD_ERR(vdd, "flash done fail.. do recovery!\n");
-				vdd->flash_done_fail = false;
-				ss_panel_recovery(vdd);
-			}
-		}
+		/* If necessary, recover the panel */
+		if (vdd->need_panel_recovery) {
+			LCD_ERR(vdd, "panel recovery is required.. do recovery!\n");
+			ss_panel_recovery(vdd);
+		}		
 
 		vdd->display_on = true;
 		LCD_INFO(vdd, "DISPLAY_ON\n");
@@ -1673,6 +1676,11 @@ int ss_send_cmd(struct samsung_display_driver_data *vdd,
 	if (rc)
 		return rc;
 
+	if (vdd->need_panel_recovery) {
+		LCD_ERR(vdd, "skip to send_cmd when need_panel_recovery is set.\n");
+		return -EINVAL;
+	}
+
 	/* TBR: never used samsung,fg-err_gpio .. remove fg_err_gpio code */
 	if (vdd->is_factory_mode && ss_gpio_is_valid(vdd->fg_err_gpio) &&
 			ss_gpio_get_value(vdd, vdd->fg_err_gpio)) {
@@ -1768,6 +1776,7 @@ error:
 static int ss_panel_on_pre(struct samsung_display_driver_data *vdd)
 {
 	int lcd_id_cmdline;
+	int rc = 0;
 
 	if (!ss_panel_attach_get(vdd)) {
 		LCD_ERR(vdd, "ss_panel_attach_get NG\n");
@@ -1828,23 +1837,29 @@ static int ss_panel_on_pre(struct samsung_display_driver_data *vdd)
 		*	Such as, dual-dsi-control or sleep-out so on.
 		*/
 		if (!SS_IS_CMDS_NULL(ss_get_cmds(vdd, RX_MANUFACTURE_ID))) {
-			ss_send_cmd_get_rx(vdd, RX_MANUFACTURE_ID, recv_buf); /* needs LEVEL1_KEY */
+			rc = ss_send_cmd_get_rx(vdd, RX_MANUFACTURE_ID, recv_buf); /* needs LEVEL1_KEY */
 		} else {
 			LCD_INFO(vdd, "manufacture_read_pre_tx_cmds\n");
-			ss_send_cmd_get_rx(vdd, RX_MANUFACTURE_ID0, recv_buf);
-			ss_send_cmd_get_rx(vdd, RX_MANUFACTURE_ID1, recv_buf + 1);
-			ss_send_cmd_get_rx(vdd, RX_MANUFACTURE_ID2, recv_buf + 2);
+			rc |= ss_send_cmd_get_rx(vdd, RX_MANUFACTURE_ID0, recv_buf);
+			rc |= ss_send_cmd_get_rx(vdd, RX_MANUFACTURE_ID1, recv_buf + 1);
+			rc |= ss_send_cmd_get_rx(vdd, RX_MANUFACTURE_ID2, recv_buf + 2);
 		}
-
-		vdd->manufacture_id_dsi =
-			(recv_buf[0] << 16) | (recv_buf[1] << 8) | recv_buf[2];
-		LCD_INFO(vdd, "manufacture id: 0x%x\n", vdd->manufacture_id_dsi);
 
 		/* compare lcd_id from bootloader and kernel side for debugging */
 		if (vdd->ndx == PRIMARY_DISPLAY_NDX)
 			lcd_id_cmdline = get_lcd_attached("GET");
 		else
 			lcd_id_cmdline = get_lcd_attached_secondary("GET");
+
+		if (rc) {
+			LCD_INFO(vdd, "fail to read manufacture_id in kenrel, overwrite with the id from bl\n");
+			vdd->manufacture_id_dsi = lcd_id_cmdline;
+		} else {
+			vdd->manufacture_id_dsi =
+				(recv_buf[0] << 16) | (recv_buf[1] << 8) | recv_buf[2];
+		}
+
+		LCD_INFO(vdd, "manufacture id: 0x%x\n", vdd->manufacture_id_dsi);
 
 		if (vdd->manufacture_id_dsi != lcd_id_cmdline) {
 			if (vdd->is_factory_mode && vdd->dtsi_data.samsung_support_factory_panel_swap) {
@@ -2036,6 +2051,8 @@ static int ss_panel_on_post(struct samsung_display_driver_data *vdd)
 
 	vdd->vrr.check_vsync = CHECK_VSYNC_COUNT;
 
+	vdd->during_panel_recovery = 0;
+
 	LCD_INFO(vdd, "-\n");
 
 	return 0;
@@ -2050,8 +2067,12 @@ int ss_panel_off_pre(struct samsung_display_driver_data *vdd)
 
 	ss_read_ddi_debug_reg(vdd);
 
-	/* use recovery only on the first booting */
-	vdd->flash_done_fail = false;
+	/* use recovery only during ON stage */
+	vdd->need_panel_recovery = false;
+
+	/* panel_dead means that panel recovery is currently in progress */
+	if (!vdd->panel_dead)
+		vdd->during_panel_recovery = 0;
 
 	vdd->esd_recovery.is_wakeup_source = false;
 	if (vdd->esd_recovery.esd_irq_enable)
@@ -2540,6 +2561,8 @@ void ss_panel_recovery(struct samsung_display_driver_data *vdd)
 	esd_irq_enable(false, true, (void *)vdd, ESD_MASK_DEFAULT);
 	vdd->panel_lpm.esd_recovery = true;
 	schedule_work(&conn->status_work.work);
+
+	vdd->during_panel_recovery = true;
 
 	LCD_INFO(vdd, "Panel Recovery --\n");
 
@@ -3054,7 +3077,7 @@ int ss_brightness_dcs(struct samsung_display_driver_data *vdd, int level, int ba
 		return -EINVAL;
 	}
 
-	snprintf(trace_name, 30, "brightness_%d", 
+	snprintf(trace_name, 30, "brightness_%d",
 		level == USE_CURRENT_BL_LEVEL ? vdd->br_info.common_br.bl_level : level);
 	SDE_ATRACE_BEGIN(trace_name);
 

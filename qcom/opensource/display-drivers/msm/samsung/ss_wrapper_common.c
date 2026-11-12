@@ -26,7 +26,7 @@ Copyright (C) 2021, Samsung Electronics. All rights reserved.
 #include "ss_wrapper_common.h"
 #define DSI_CTRL_CMD_LAST_COMMAND     0x40
 
-#define MAX_LEN_DUMP_BUF	(256)
+#define MAX_LEN_DUMP_BUF	(512)
 
 #define kfree_and_null(x)	{ \
 	if (x) { \
@@ -1359,7 +1359,7 @@ static void ss_op_copy_state(struct samsung_display_driver_data *vdd)
 				"MODERATO" : "FLAT",
 			state->lpm_ongoing ? "LPM" :
 				state->hmt_on ? "HMT" :
-				state->is_hbm_plus ? "HBM+" : 
+				state->is_hbm_plus ? "HBM+" :
 				state->is_hbm ? "HBM" : "NORMAL",
 			state->acl_on ? "ON" : "OFF", state->gradual_acl_val,
 			state->display_on, state->smooth_dim_off, vdd->br_info.temperature,

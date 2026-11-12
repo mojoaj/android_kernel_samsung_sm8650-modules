@@ -3795,6 +3795,79 @@ static ssize_t ss_udc_factory_show(struct device *dev,
 end:
 	return len;
 }
+
+static ssize_t ss_udc_gamma_comp_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct samsung_display_driver_data *vdd =
+			(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+
+	snprintf(buf, 10, "%d", vdd->udc.gamma_init_done);
+	LCD_INFO(vdd, "gamma_init_done:  %d\n", vdd->udc.gamma_init_done);
+
+	return strlen(buf);
+}
+
+static ssize_t ss_udc_gamma_comp_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	int input;
+	struct UDC *udc;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_INFO(vdd, "no vdd");
+		goto end;
+	}
+
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+	if (!sec_debug_is_enabled()) {
+		LCD_INFO(vdd, "Not supported in user build.");
+		goto end;
+	}
+#endif
+
+	if (sscanf(buf, "%d", &input) != 1)
+		goto end;
+
+	LCD_INFO(vdd, "select [%d]\n", input);
+
+	if (!ss_is_ready_to_send_cmd(vdd)) {
+		LCD_INFO(vdd, "Panel is not ready. Panel State(%d)\n", vdd->panel_state);
+		return -EBUSY;
+	}
+
+	udc = &vdd->udc;
+
+	if (input == 0) {
+		/* Do whole UDC gamma comp seq */
+ 		if (vdd->panel_func.udc_gamma_init)
+			vdd->panel_func.udc_gamma_init(vdd);
+ 	} else if (input == 1) {
+		/* Read UDC gamma */
+ 		if (vdd->panel_func.udc_gamma_read)
+			vdd->panel_func.udc_gamma_read(vdd);
+ 	} else if (input == 2) {
+ 		/* Backup UDC gamma */
+ 		if (vdd->panel_func.udc_gamma_backup)
+			vdd->panel_func.udc_gamma_backup(vdd);
+ 	} else if (input == 3) {
+		if (vdd->panel_func.udc_gamma_comp)
+			vdd->panel_func.udc_gamma_comp(vdd);
+ 	} else if (input == 4) {
+ 		/* UDC backup gamma erase (2sector) */
+		if (vdd->panel_func.udc_gamma_erase && udc->gamma_backup_addr)
+			vdd->panel_func.udc_gamma_erase(vdd, udc->gamma_backup_addr, 2);
+ 	} else if (input == 9) {
+ 		if (vdd->panel_func.udc_gamma_restore)
+			vdd->panel_func.udc_gamma_restore(vdd);
+ 	}
+
+end:
+	return size;
+}
+
 static ssize_t ss_set_elvss_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -4164,14 +4237,14 @@ static ssize_t ss_spot_repair_check_show(struct device *dev,
 		LCD_ERR(vdd, "fail to rx_ssr\n");
 		return -EPERM;
 	}
-	
+
 	for (i = 0; i < 4; i++) {
 		if (read_val[i] != rework_val[i])
 			res = 1; // need MCA
 	}
 
 	snprintf(buf, 10, "%d", res);
- 
+
 	return strlen(buf);
 }
 
@@ -4451,6 +4524,7 @@ static DEVICE_ATTR(ioctl_power_ctrl, S_IRUGO|S_IWUSR|S_IWGRP, ss_ioctl_power_ctr
 static DEVICE_ATTR(te_check, S_IRUGO | S_IWUSR | S_IWGRP, ss_te_check_show, NULL);
 static DEVICE_ATTR(udc_data, S_IRUGO | S_IWUSR | S_IWGRP, ss_udc_data_show, ss_udc_data_store);
 static DEVICE_ATTR(udc_fac, S_IRUGO | S_IWUSR | S_IWGRP, ss_udc_factory_show, NULL);
+static DEVICE_ATTR(udc_gamma_comp, S_IRUGO | S_IWUSR | S_IWGRP, ss_udc_gamma_comp_show, ss_udc_gamma_comp_store);
 static DEVICE_ATTR(set_elvss, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_set_elvss_store);
 static DEVICE_ATTR(test, 0644, ss_test_show, ss_test_store);
 static DEVICE_ATTR(glut_test, S_IRUGO | S_IWUSR | S_IWGRP, ss_glut_test_show, ss_glut_test_store);
@@ -4538,6 +4612,7 @@ static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_ioctl_power_ctrl.attr,
 	&dev_attr_te_check.attr,
 	&dev_attr_udc_data.attr,
+	&dev_attr_udc_gamma_comp.attr,
 	&dev_attr_udc_fac.attr,
 	&dev_attr_set_elvss.attr,
 	&dev_attr_dsc_crc.attr,
