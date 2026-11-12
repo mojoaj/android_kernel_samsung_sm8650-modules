@@ -279,40 +279,40 @@ msm_drm-$(CONFIG_DRM_MSM) += msm_atomic.o \
 
 
 
-include $(DISPLAY_ROOT)/msm/samsung/E3_S6E3HAE_AMB681AZ01/E3_S6E3HAE_AMB681AZ01.conf
-ccflags-y +=	-include $(DISPLAY_ROOT)/msm/samsung/E3_S6E3HAE_AMB681AZ01/E3_S6E3HAE_AMB681AZ01.h
+# Galaxy Z Fold6 (q6q) panels, imported from SM-F956B OSRC
+include $(DISPLAY_ROOT)/msm/samsung/PBA_BOOTING_DSI1/display_PBA_BOOTING_DSI1.conf
+ccflags-y +=	-include $(DISPLAY_ROOT)/msm/samsung/PBA_BOOTING_DSI1/display_PBA_BOOTING_DSI1.h
+msm_drm-$(CONFIG_PANEL_PBA_FHD_DSI1) += samsung/PBA_BOOTING_DSI1/ss_dsi_panel_PBA_BOOTING_fhd_dsi1.o
 
-XXD := /usr/bin/xxd
-SED := /bin/sed
+include $(DISPLAY_ROOT)/msm/samsung/Q6_S6E3FAE_AMB625GR01/Q6_S6E3FAE_AMB625GR01.conf
+ccflags-y +=	-include $(DISPLAY_ROOT)/msm/samsung/Q6_S6E3FAE_AMB625GR01/Q6_S6E3FAE_AMB625GR01.h
+include $(DISPLAY_ROOT)/msm/samsung/Q6_S6E3XA5_AMF761GQ01/Q6_S6E3XA5_AMF761GQ01.conf
+ccflags-y +=	-include $(DISPLAY_ROOT)/msm/samsung/Q6_S6E3XA5_AMF761GQ01/Q6_S6E3XA5_AMF761GQ01.h
+
+XXD := xxd
+SED := sed
 
 #Translate .dat file to .h to cover the case which can not use request_firmware(Recovery Mode)
 CLEAR_TMP := $(shell rm -rf include-samsung-gen)
 MAKE_DIR := $(shell mkdir -p include-samsung-gen)
 
-COPY_TO_HERE := $(shell cp -vf $(DISPLAY_ROOT)/msm/samsung/panel_data_file/E3_S6E3HAE_AMB681AZ01.dat E3_S6E3HAE_AMB681AZ01_PDF_DATA)
-DATA_TO_HEX := $(shell $(XXD) -i E3_S6E3HAE_AMB681AZ01_PDF_DATA > include-samsung-gen/E3_S6E3HAE_AMB681AZ01_PDF.h)
-ADD_NULL_CHR := $(shell $(SED) -i -e 's/\([0-9a-f]\)$$/\0, 0x00/' include-samsung-gen/E3_S6E3HAE_AMB681AZ01_PDF.h)
+COPY_TO_HERE := $(shell cp -vf $(DISPLAY_ROOT)/msm/samsung/panel_data_file/Q6_S6E3FAE_AMB625GR01.dat Q6_S6E3FAE_AMB625GR01_PDF_DATA)
+DATA_TO_HEX := $(shell $(XXD) -i Q6_S6E3FAE_AMB625GR01_PDF_DATA > include-samsung-gen/Q6_S6E3FAE_AMB625GR01_PDF.h)
+ADD_NULL_CHR := $(shell $(SED) -i -e 's/\([0-9a-f]\)$$/\0, 0x00/' include-samsung-gen/Q6_S6E3FAE_AMB625GR01_PDF.h)
 
-COPY_TO_HERE := $(shell cp -vf $(DISPLAY_ROOT)/msm/samsung/panel_data_file/E3_S6E3HAF_AMB679FN01.dat E3_S6E3HAF_AMB679FN01_PDF_DATA)
-DATA_TO_HEX := $(shell $(XXD) -i E3_S6E3HAF_AMB679FN01_PDF_DATA > include-samsung-gen/E3_S6E3HAF_AMB679FN01_PDF.h)
-ADD_NULL_CHR := $(shell $(SED) -i -e 's/\([0-9a-f]\)$$/\0, 0x00/' include-samsung-gen/E3_S6E3HAF_AMB679FN01_PDF.h)
+COPY_TO_HERE := $(shell cp -vf $(DISPLAY_ROOT)/msm/samsung/panel_data_file/Q6_S6E3XA5_AMF761GQ01.dat Q6_S6E3XA5_AMF761GQ01_PDF_DATA)
+DATA_TO_HEX := $(shell $(XXD) -i Q6_S6E3XA5_AMF761GQ01_PDF_DATA > include-samsung-gen/Q6_S6E3XA5_AMF761GQ01_PDF.h)
+ADD_NULL_CHR := $(shell $(SED) -i -e 's/\([0-9a-f]\)$$/\0, 0x00/' include-samsung-gen/Q6_S6E3XA5_AMF761GQ01_PDF.h)
 
 ccflags-y +=	-iquote include-samsung-gen
 
-msm_drm-$(CONFIG_PANEL_E3_S6E3HAE_AMB681AZ01_WQHD) += samsung/E3_S6E3HAE_AMB681AZ01/E3_S6E3HAE_AMB681AZ01_panel.o
+msm_drm-$(CONFIG_PANEL_Q6_S6E3FAE_AMB625GR01_HD) += samsung/Q6_S6E3FAE_AMB625GR01/Q6_S6E3FAE_AMB625GR01_panel.o
+msm_drm-$(CONFIG_PANEL_Q6_S6E3XA5_AMF761GQ01_QXGA) += samsung/Q6_S6E3XA5_AMF761GQ01/Q6_S6E3XA5_AMF761GQ01_panel.o
 
 include $(DISPLAY_ROOT)/msm/samsung/panel_common.conf
 ccflags-y +=	-include $(DISPLAY_ROOT)/msm/samsung/panel_common_conf.h
 
 msm_drm-$(CONFIG_DISPLAY_SAMSUNG) += samsung/PBA_BOOTING/ss_dsi_panel_PBA_BOOTING_fhd.o
-include $(DISPLAY_ROOT)/msm/samsung/E3_S6E3HAF_AMB679FN01/E3_S6E3HAF_AMB679FN01.conf
-ccflags-y +=	-include $(DISPLAY_ROOT)/msm/samsung/E3_S6E3HAF_AMB679FN01/E3_S6E3HAF_AMB679FN01.h
-
-
-msm_drm-$(CONFIG_PANEL_E3_S6E3HAF_AMB679FN01_WQHD) += samsung/E3_S6E3HAF_AMB679FN01/E3_S6E3HAF_AMB679FN01_panel.o
-
-include $(DISPLAY_ROOT)/msm/samsung/panel_common.conf
-ccflags-y +=	-include $(DISPLAY_ROOT)/msm/samsung/panel_common_conf.h
 
 ifeq ($(TARGET_BUILD_VARIANT), eng)
 ccflags-y += -DCONFIG_OPCODE_PARSER=1
