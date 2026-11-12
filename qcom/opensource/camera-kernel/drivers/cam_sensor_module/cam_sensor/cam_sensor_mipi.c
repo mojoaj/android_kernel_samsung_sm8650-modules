@@ -18,6 +18,15 @@
 #include "cam_sensor_mipi.h"
 
 // Wide
+#if defined(CONFIG_SEC_Q6Q_PROJECT)
+/* Galaxy Z Fold6: use the SM-F956B OSRC adaptive MIPI tables verbatim */
+#include "q6q/cam_sensor_adaptive_mipi_wide_2_0.h"
+#include "q6q/cam_sensor_adaptive_mipi_uw_2_0.h"
+#include "q6q/cam_sensor_adaptive_mipi_tele_2_0.h"
+#include "q6q/cam_sensor_adaptive_mipi_tele2_2_0.h"
+#include "q6q/cam_sensor_adaptive_mipi_front_2_0.h"
+#include "q6q/cam_sensor_adaptive_mipi_front_top_2_0.h"
+#else
 #if defined(CONFIG_SEC_E1Q_PROJECT) || defined(CONFIG_SEC_E2Q_PROJECT) || defined(CONFIG_SEC_Q6Q_PROJECT) || defined(CONFIG_SEC_B6Q_PROJECT)
 #include "cam_sensor_adaptive_mipi_s5kgn3_2_0.h"
 #elif defined(CONFIG_SEC_E3Q_PROJECT) || defined(CONFIG_SEC_Q6AQ_PROJECT)
@@ -63,6 +72,7 @@
 #else
 #include "cam_sensor_adaptive_mipi_front_top_2_0.h"
 #endif
+#endif /* CONFIG_SEC_Q6Q_PROJECT */
 
 #include "cam_sensor_dev.h"
 
