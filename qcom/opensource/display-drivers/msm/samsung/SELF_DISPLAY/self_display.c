@@ -156,7 +156,7 @@ static int self_display_debug(struct samsung_display_driver_data *vdd)
 	rx_len = ss_send_cmd_get_rx(vdd, RX_SELF_DISP_DEBUG, buf);
 	if (rx_len < 0) {
 		LCD_ERR(vdd, "invalid rx_len(%d)\n", rx_len);
-		return false;
+		return -1;
 	}
 
 	vdd->self_disp.debug.SM_SUM_O = ((buf[0] & 0xFF) << 24);

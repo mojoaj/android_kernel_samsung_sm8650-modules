@@ -29,6 +29,129 @@
 
 bool enable_pr_debug;
 
+DEFINE_SPINLOCK(ss_rlock);
+
+/* MIPI retry/recovery log history */
+static struct ss_dbg_rlog {
+	struct ss_rlog_data logs[SS_XLOG_ENTRY];
+	u32 first;
+	u32 last;
+	u32 curr;
+} ss_dbg_rlog;
+
+/* Samsung mipi recovert (rlog) & DUMP Function */
+void ss_rlog(int ndx, int type, int retry_cnt, int recovery_done)
+{
+	unsigned long flags;
+	struct ss_rlog_data *log;
+
+	spin_lock_irqsave(&ss_rlock, flags);
+	log = &ss_dbg_rlog.logs[ss_dbg_rlog.curr];
+	log->time = ktime_to_us(ktime_get());
+
+	log->type = type;
+	log->ndx = ndx;
+	log->retry_cnt = retry_cnt;
+	log->recovery_done = recovery_done;
+
+	ss_dbg_rlog.curr = (ss_dbg_rlog.curr + 1) % SS_XLOG_ENTRY;
+	ss_dbg_rlog.last++;
+
+	spin_unlock_irqrestore(&ss_rlock, flags);
+}
+
+static bool __ss_dump_rlog_calc_range(void)
+{
+	static u32 next;
+	bool need_dump = true;
+	unsigned long flags;
+	struct ss_dbg_rlog *rlog = &ss_dbg_rlog;
+
+	spin_lock_irqsave(&ss_rlock, flags);
+
+	rlog->first = next;
+
+	if (rlog->last == rlog->first) {
+		need_dump = false;
+		goto dump_exit;
+	}
+
+	if (rlog->last < rlog->first) {
+		rlog->first %= SS_XLOG_ENTRY;
+		if (rlog->last < rlog->first)
+			rlog->last += SS_XLOG_ENTRY;
+	}
+
+	if ((rlog->last - rlog->first) > SS_XLOG_ENTRY) {
+		pr_warn("rlog buffer overflow before dump: %d\n",
+			rlog->last - rlog->first);
+		rlog->first = rlog->last - SS_XLOG_ENTRY;
+	}
+
+	next = rlog->first + 1;
+
+dump_exit:
+	spin_unlock_irqrestore(&ss_rlock, flags);
+
+	return need_dump;
+}
+
+static ssize_t ss_rlog_dump_entry(char *rlog_buf, ssize_t rlog_buf_size)
+{
+	ssize_t off = 0;
+	struct ss_rlog_data *log;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ss_rlock, flags);
+
+	log = &ss_dbg_rlog.logs[ss_dbg_rlog.first %
+		SS_XLOG_ENTRY];
+
+	off = scnprintf((rlog_buf + off), (rlog_buf_size - off),
+		"[%5llu.%6llu]:", log->time/1000000, log->time%1000000);
+
+	if (off < SS_XLOG_BUF_ALIGN_TIME) {
+		memset((rlog_buf + off), 0x20, (SS_XLOG_BUF_ALIGN_TIME - off));
+		off = SS_XLOG_BUF_ALIGN_TIME;
+	}
+
+	// ex1) retry [1] recovery [0]
+	// - Do not recovery [0] because it worked normally after retrying once [1].	
+	// ex2) retry [2] recovery [1]
+	// - Do recovery [1] after retrying twice [2].
+	// ex2) retry [2] recovery [0]
+	// - Do not recovery [0] becuase mipi fail occurred during recovery. (retry 2 is max retry count)
+
+	off += scnprintf((rlog_buf + off), (rlog_buf_size - off), "[%50s] : [%d] retry [%d] recovery [%d]\n",
+		ss_get_cmd_name(log->type), log->ndx, log->retry_cnt, log->recovery_done);
+
+	spin_unlock_irqrestore(&ss_rlock, flags);
+
+	return off;
+}
+
+static ssize_t ss_rlog_dump_read(struct file *file, char __user *buff,
+		size_t count, loff_t *ppos)
+{
+	ssize_t len = 0;
+	char rlog_buf[SS_XLOG_BUF_MAX];
+
+	if (__ss_dump_rlog_calc_range()) {
+		len = ss_rlog_dump_entry(rlog_buf, SS_XLOG_BUF_MAX);
+
+		if (len < 0 || len > count) {
+			pr_err("len is more than user buffer size");
+			return 0;
+		}
+		
+		if (copy_to_user(buff, rlog_buf, len))
+			return -EFAULT;
+		*ppos += len;
+	}
+
+	return len;
+}
+
 DEFINE_SPINLOCK(ss_xlock);
 
 static struct ss_dbg_xlog {
@@ -327,6 +450,17 @@ static int debug_display_read_once(struct samsung_display_driver_data *vdd,
 			i == PRIMARY_DISPLAY_NDX ? "MAIN" : "SUB",
 			vddp->self_disp.debug.SM_SUM_O, vddp->self_disp.operation[FLAG_SELF_MASK].img_checksum);
 
+		if (vddp->panel_func.udc_gamma_comp) {
+			LCD_INFO(vddp, "[%s] UDC_GAMMA_COMP : %s\n",
+				i == PRIMARY_DISPLAY_NDX ? "MAIN" : "SUB", vddp->udc.gamma_comp_done ? "DONE" : "NOT DONE");
+			len += scnprintf(buf + len, SS_ONCE_LOG_BUF_MAX - len, "[%s] UDC_GAMMA_COMP : %s\n",
+				i == PRIMARY_DISPLAY_NDX ? "MAIN" : "SUB", vddp->udc.gamma_comp_done ? "DONE" : "NOT DONE");
+		}
+
+		LCD_INFO(vddp, "[%s] MIPI_FAIL_RECOVERY_CNT : %d / MIPI_FAIL_RECOVERY_FAIL_CNT : %d\n",
+			i == PRIMARY_DISPLAY_NDX ? "MAIN" : "SUB", vddp->mipi_fail_recovery_cnt, vddp->mipi_fail_recovery_fail_cnt);
+		len += scnprintf(buf + len, SS_ONCE_LOG_BUF_MAX - len, "[%s] MIPI_FAIL_RECOVERY_CNT : %d / MIPI_FAIL_RECOVERY_FAIL_CNT : %d\n",
+			i == PRIMARY_DISPLAY_NDX ? "MAIN" : "SUB", vddp->mipi_fail_recovery_cnt, vddp->mipi_fail_recovery_fail_cnt);		
 	}
 
 	len += scnprintf(buf + len, SS_ONCE_LOG_BUF_MAX - len, "VRR: adj: %d%s\n",
@@ -382,6 +516,10 @@ static ssize_t debug_display_read(struct file *file, char __user *buff,
 		ss_read_ddi_debug_reg(vdd);
 		return len;
 	}
+
+	len = ss_rlog_dump_read(file, buff, count, ppos);
+	if (len)
+		return len;
 
 	len = ss_xlog_dump_read(file, buff, count, ppos);
 	if (len)
@@ -841,7 +979,7 @@ int ss_check_flash_done(struct samsung_display_driver_data *vdd, u8 *buf)
 
 	if (vdd->panel_func.check_flash_done) {
 		vdd->panel_func.check_flash_done(vdd);
-		ret = vdd->flash_done_fail;
+		ret = vdd->need_panel_recovery;
 	} else {
 		LCD_INFO(vdd, "check_flash function is Null\n");
 	}

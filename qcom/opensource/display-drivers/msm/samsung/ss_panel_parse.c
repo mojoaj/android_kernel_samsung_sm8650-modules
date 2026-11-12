@@ -1500,7 +1500,7 @@ static void ss_panel_parse_dt_ub_con(struct device_node *np,
 
 void ss_panel_parse_dt(struct samsung_display_driver_data *vdd)
 {
-	int rc, i;
+	int rc, i, j;
 	u32 tmp[2];
 	char backlight_tft_gpio[] = "samsung,panel-backlight-tft-gpio1";
 	const __be32 *data_32;
@@ -1978,6 +1978,30 @@ void ss_panel_parse_dt(struct samsung_display_driver_data *vdd)
 			LCD_INFO(vdd, "[UDC] fail to alloc udc data buf..\n");
 		else
 			LCD_INFO(vdd, "[UDC] start_addr : %X, data_size : %d\n", vdd->udc.start_addr, vdd->udc.size);
+	}
+
+	rc = ss_parse_panel_legoop_table(vdd, np, &org_table, "samsung,udc_gamma_offset_table");
+	if (!rc) {
+		vdd->udc.offset_table = kvzalloc((sizeof(int *) * org_table.row_size), GFP_KERNEL);
+		if (!vdd->udc.offset_table) {
+			LCD_ERR(vdd, "fail to allocate cmds(%d)\n", org_table.row_size);
+		} else {
+			for (i = 0 ; i < org_table.row_size; i++) {
+				vdd->udc.offset_table[i] = kvzalloc((sizeof(int) * org_table.col_size), GFP_KERNEL);
+				if (!vdd->udc.offset_table[i]) {
+					LCD_ERR(vdd, "fail to allocate cmds[%d](%d)\n", i, org_table.col_size);
+					kvfree(vdd->udc.offset_table);
+					break;
+				}
+			}
+		}
+
+		LCD_INFO(vdd, "[UDC_GAMMA] alloc offset table [%d][%d]\n", org_table.row_size, org_table.col_size);
+		for (i = 0; i < org_table.row_size; i++) {
+			for (j = 0; j < org_table.col_size; j++) {
+				vdd->udc.offset_table[i][j] = org_table.cmds[i][j];
+			}
+		}
 	}
 
 	/* use recovery when flash loading is failed */
